@@ -30,7 +30,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { Tab, UserRole, AppSettings, ViewMode, StudentCategory, AppData, CurrentUser } from '../types';
-import { getSyncStatus } from '../services/firebase';
+import { getSyncStatus } from '../services/supabase';
 
 interface SidebarProps {
   isOpen: boolean;

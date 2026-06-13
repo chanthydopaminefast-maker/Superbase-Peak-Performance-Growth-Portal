@@ -4,7 +4,7 @@ import {
   ShieldCheck, RefreshCw, Clock, Lock, Unlock, Download, Upload, Database, ExternalLink, Camera, Sparkles,
   CalendarDays, CalendarRange, History
 } from 'lucide-react';
-import { getCloudBackups, createCloudBackup } from '../services/firebase';
+import { getCloudBackups, createCloudBackup } from '../services/supabase';
 import { format, differenceInDays } from 'date-fns';
 
 interface Props {

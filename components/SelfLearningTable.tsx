@@ -3115,7 +3115,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     }
 
     try {
-      const { createSharedNote } = await import('../services/firebase');
+      const { createSharedNote } = await import('../services/supabase');
       const shareId = await createSharedNote(userId, userName, 'self-learning', sharingTopic.title, sharingTopic);
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
@@ -3178,7 +3178,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
        setSelectedTopicId(null);
     }
 
-    import('../services/firebase').then(({ saveTopic }) => {
+    import('../services/supabase').then(({ saveTopic }) => {
       const storedUser = localStorage.getItem('dps_user');
       if (storedUser) {
         try {

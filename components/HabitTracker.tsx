@@ -155,7 +155,7 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
     const dateKey = format(selectedPlanningDate, 'yyyy-MM-dd');
     const noteContent = notes[dateKey] || '';
     try {
-      const { createSharedNote } = await import('../services/firebase');
+      const { createSharedNote } = await import('../services/supabase');
       const storedUser = localStorage.getItem('dps_user');
       let userName = 'Chanthy';
       let userId = 'unknown';

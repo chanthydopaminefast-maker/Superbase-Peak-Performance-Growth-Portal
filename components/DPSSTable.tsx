@@ -1852,7 +1852,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
 
     try {
-      const { createSharedNote } = await import('../services/firebase');
+      const { createSharedNote } = await import('../services/supabase');
       const shareId = await createSharedNote(userId, userName, 'note-taking', sharingTopic.title, sharingTopic);
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
@@ -1915,7 +1915,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
        setSelectedTopicId(null);
     }
 
-    import('../services/firebase').then(({ saveTopic }) => {
+    import('../services/supabase').then(({ saveTopic }) => {
       const storedUser = localStorage.getItem('dps_user');
       if (storedUser) {
         try {

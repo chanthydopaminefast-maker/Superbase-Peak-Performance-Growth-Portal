@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, CurrentUser, AppData } from '../types';
 import { X, Save, Settings2, Type, Baseline, Paintbrush, Check, Cloud, LogIn, LogOut, Image as ImageIcon, Trash2, FileText, Coins, Table, Download, Upload, RefreshCw, ExternalLink } from 'lucide-react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
-import { signInWithEmailAndPassword, auth } from '../services/firebase';
 
 interface Props {
   isOpen: boolean;
@@ -162,14 +161,16 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     setEmailError('');
     setIsEmailLoading(true);
     try {
-      const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import('../services/firebase');
+      const { supabase } = await import('../services/supabase');
       if (isSignUpMode) {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
       }
       // Do not call onLogin() here because onLogin maps to signInWithGoogle.
-      // onAuthStateChanged in App.tsx will automatically pick up the login state change.
+      // onAuthStateChange in App.tsx will automatically pick up the login state change.
     } catch (error: any) {
       console.error(error);
       setEmailError(error.message || `Error ${isSignUpMode ? 'signing up' : 'signing in'} with Email/Password`);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { HabitTracker } from './components/HabitTracker';
 import { DailyJournal } from './components/DailyJournal';
 import { Reflections } from './components/Reflections';
@@ -17,7 +17,7 @@ import { MaintenancePanel } from './components/MaintenancePanel';
 import Dashboard from './components/Dashboard';
 import { FloatingToolbar } from './components/FloatingToolbar';
 import { AppData, Student, CurrentUser, UserRole, ColumnConfig, Tab, ViewMode, AppSettings, StudentCategory, JournalEntry, ExpenseEntry } from './types';
-import { subscribeToData, saveData, auth, signInWithGoogle, logOut } from './services/firebase';
+import { subscribeToData, saveData, signInWithGoogle, logOut, supabase } from './services/supabase';
 import { decodeFromURLSafeBase64 } from './services/sharingEncoder';
 import { storage } from './services/storage';
 import { Menu, MessageSquare, X, GraduationCap } from 'lucide-react';
@@ -49,37 +49,35 @@ const App: React.FC = () => {
   const [isAuthInitializing, setIsAuthInitializing] = useState(true);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setIsAuthInitializing(false);
+      const user = session?.user;
       if (user) {
         const stored = localStorage.getItem('dps_user');
         const role = (stored ? JSON.parse(stored).role : 'Admin') || 'Admin';
         const newUser: CurrentUser = { 
-          name: user.displayName || 'User', 
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User', 
           role, 
-          uid: user.uid,
+          uid: user.id,
           email: user.email 
         };
         setCurrentUser(newUser);
         localStorage.setItem('dps_user', JSON.stringify(newUser));
       } else {
-        // If we are inside an iframe (like the AI Studio Preview environment), third-party cookies/storage are blocked.
-        // This causes onAuthStateChanged to return null. We should preserve the session in localStorage as a fallback.
-        const isInsideIframe = window.self !== window.top;
-        if (!isInsideIframe) {
-          const stored = localStorage.getItem('dps_user');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed.uid) {
-              const localUser: CurrentUser = { name: 'Local User', role: 'Admin' as UserRole };
-              setCurrentUser(localUser);
-              localStorage.setItem('dps_user', JSON.stringify(localUser));
-            }
-          }
-        }
+        setCurrentUser(null);
+        localStorage.removeItem('dps_user');
       }
     });
-    return () => unsubscribeAuth();
+    
+    
+    // Initial fetch if already logged in via session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+       if (!session) setIsAuthInitializing(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const [data, setData] = useState<AppData>(() => {
@@ -152,6 +150,22 @@ const App: React.FC = () => {
 
   const OFFICIAL_DAILY_TASKS = useMemo(() => [], []);
 
+  const previousDataSyncRef = useRef<string | null>(null);
+
+  // Supabase Global Auto-Sync Hook
+  useEffect(() => {
+    if (currentUser?.uid && !loading && data) {
+      const dataStr = JSON.stringify(data);
+      if (dataStr === previousDataSyncRef.current) return;
+      previousDataSyncRef.current = dataStr;
+
+      const timer = setTimeout(() => {
+        saveData(currentUser.uid, data);
+      }, 1500); // 1.5s debounce
+      return () => clearTimeout(timer);
+    }
+  }, [data, currentUser, loading]);
+
   // No auto-seeding of named tasks per user request for a blank/clean start
   useEffect(() => {
     // Left empty intentionally to prevent auto-seeding of named tasks
@@ -191,7 +205,7 @@ const App: React.FC = () => {
       }
     } else if (shareId) {
       setIsFetchSharedLoading(true);
-      import('./services/firebase').then(({ getSharedNote }) => {
+      import('./services/supabase').then(({ getSharedNote }) => {
         getSharedNote(shareId).then((sharedDoc) => {
           setIsFetchSharedLoading(false);
           if (sharedDoc) {
@@ -236,7 +250,7 @@ const App: React.FC = () => {
         const updatedTopics = [...currentTopics, clonedTopic];
         handleUpdate({ ...data, dpssTopics: updatedTopics });
         
-        import('./services/firebase').then(({ saveTopic }) => {
+        import('./services/supabase').then(({ saveTopic }) => {
           if (currentUser?.uid) {
             saveTopic(currentUser.uid, clonedTopic, 'dpss');
           }
@@ -247,7 +261,7 @@ const App: React.FC = () => {
         const updatedTopics = [...currentTopics, clonedTopic];
         handleUpdate({ ...data, selfLearningTopics: updatedTopics });
         
-        import('./services/firebase').then(({ saveTopic }) => {
+        import('./services/supabase').then(({ saveTopic }) => {
           if (currentUser?.uid) {
             saveTopic(currentUser.uid, clonedTopic, 'selfLearning');
           }
@@ -262,7 +276,7 @@ const App: React.FC = () => {
       
       handleUpdate({ ...data, journalEntries: newEntries });
       
-      import('./services/firebase').then(({ saveJournalEntry }) => {
+      import('./services/supabase').then(({ saveJournalEntry }) => {
         if (currentUser?.uid) {
           saveJournalEntry(currentUser.uid, targetDate, entry);
         }
@@ -277,7 +291,7 @@ const App: React.FC = () => {
 
       handleUpdate({ ...data, dailyNotes: newNotes });
 
-      import('./services/firebase').then(({ saveDailyNote }) => {
+      import('./services/supabase').then(({ saveDailyNote }) => {
         if (currentUser?.uid) {
           saveDailyNote(currentUser.uid, targetDate, content);
         }
@@ -398,6 +412,8 @@ const App: React.FC = () => {
           newData.settings.columns = newCols;
         }
       }
+      
+      previousDataSyncRef.current = JSON.stringify(newData);
       setData(newData);
       storage.setItem('dps_data', JSON.stringify(newData)); // SYNC to storage
       setLoading(false);
@@ -411,7 +427,7 @@ const App: React.FC = () => {
     setData(newData);
     storage.setItem('dps_data', JSON.stringify(newData));
     if (currentUser?.uid) {
-      const { deleteStudent } = await import('./services/firebase');
+      const { deleteStudent } = await import('./services/supabase');
       await deleteStudent(currentUser.uid, id);
     }
   };
@@ -449,7 +465,7 @@ const App: React.FC = () => {
     storage.setItem('dps_data', JSON.stringify(newData));
 
     if (currentUser?.uid) {
-      const { deleteTopic, saveTopic } = await import('./services/firebase');
+      const { deleteTopic, saveTopic } = await import('./services/supabase');
       if (isRoot) {
         await deleteTopic(currentUser.uid, id, category);
       } else {
@@ -474,7 +490,7 @@ const App: React.FC = () => {
         storage.setItem('dps_data', JSON.stringify(newData));
 
         if (currentUser?.uid) {
-          import('./services/firebase').then(({ saveStudent, saveData, saveTopic, deleteTopic, saveTopicsBulk, saveAttendance, saveDailyNote, saveHabitCompletionBulk, saveHabitList, deleteHabit }) => {
+          import('./services/supabase').then(({ saveStudent, saveData, saveTopic, deleteTopic, saveTopicsBulk, saveAttendance, saveDailyNote, saveHabitCompletionBulk, saveHabitList, deleteHabit }) => {
             // Specialized sync logic...
             
             // 1. Sync students
@@ -487,7 +503,7 @@ const App: React.FC = () => {
             });
             prev.students.forEach(s => {
               if (!newData.students.find(ns => ns.id === s.id)) {
-                import('./services/firebase').then(f => f.deleteStudent(currentUser.uid!, s.id));
+                import('./services/supabase').then(f => f.deleteStudent(currentUser.uid!, s.id));
               }
             });
 
@@ -560,7 +576,7 @@ const App: React.FC = () => {
       storage.setItem('dps_data', JSON.stringify(newData));
       
       if (currentUser?.uid) {
-        import('./services/firebase').then(({ saveStudent }) => {
+        import('./services/supabase').then(({ saveStudent }) => {
           const student = updatedStudents.find(s => s.id === id);
           if (student) saveStudent(currentUser.uid, student);
         });
@@ -578,7 +594,7 @@ const App: React.FC = () => {
       storage.setItem('dps_data', JSON.stringify(newData));
 
       if (currentUser?.uid) {
-        import('./services/firebase').then(({ saveTopic, deleteTopic }) => {
+        import('./services/supabase').then(({ saveTopic, deleteTopic }) => {
           if (topicToSave) {
             if (topicToSave.deleted && !topicToSave.deletedAt) {
                deleteTopic(currentUser.uid, topicToSave.id, category);
@@ -599,7 +615,7 @@ const App: React.FC = () => {
       storage.setItem('dps_data', JSON.stringify(newData));
 
       if (currentUser?.uid) {
-        import('./services/firebase').then(({ saveDailyNote }) => {
+        import('./services/supabase').then(({ saveDailyNote }) => {
           saveDailyNote(currentUser.uid, date, content);
         });
       }
@@ -614,7 +630,7 @@ const App: React.FC = () => {
       storage.setItem('dps_data', JSON.stringify(newData));
 
       if (currentUser?.uid) {
-        import('./services/firebase').then(({ saveJournalEntry }) => {
+        import('./services/supabase').then(({ saveJournalEntry }) => {
           saveJournalEntry(currentUser.uid, date, entry);
         });
       }
@@ -631,7 +647,7 @@ const App: React.FC = () => {
       storage.setItem('dps_data', JSON.stringify(newData));
 
       if (currentUser?.uid) {
-        import('./services/firebase').then(({ saveHabitCompletion }) => {
+        import('./services/supabase').then(({ saveHabitCompletion }) => {
           saveHabitCompletion(currentUser.uid, date, habitId, completed);
         });
       }
@@ -657,7 +673,7 @@ const App: React.FC = () => {
     storage.setItem('dps_data', JSON.stringify(newData));
 
     if (currentUser?.uid) {
-      const { saveExpense } = await import('./services/firebase');
+      const { saveExpense } = await import('./services/supabase');
       await saveExpense(currentUser.uid, expense, isDelete);
     }
   };
@@ -726,7 +742,7 @@ const App: React.FC = () => {
       storage.setItem('dps_data', JSON.stringify(newData));
 
       if (currentUser?.uid) {
-        import('./services/firebase').then(({ saveStudent }) => {
+        import('./services/supabase').then(({ saveStudent }) => {
           for (const student of newStudentsBatch) {
             saveStudent(currentUser.uid!, student);
           }
@@ -738,17 +754,7 @@ const App: React.FC = () => {
 
   const handleLogin = async (_name?: string, role: UserRole = 'Admin', _pin?: string) => {
     try {
-      const result = await signInWithGoogle();
-      if (result) {
-        const user: CurrentUser = { 
-          name: result.displayName || 'User', 
-          role, 
-          uid: result.uid,
-          email: result.email
-        };
-        setCurrentUser(user);
-        localStorage.setItem('dps_user', JSON.stringify(user));
-      }
+      await signInWithGoogle();
     } catch (error: any) {
       console.error(error);
       alert(`Google Sign-In failed: ${error.message || "Please check your network and configuration"}\n\nTroubleshooting:\n1. If you are previewing this app inside the AI Studio frame, please open the application in a NEW TAB using the button in the top right, as browser privacy policies block auth popups/redirects inside third-party iframes.\n2. Ensure the Google Sign-in provider is enabled in your Firebase Console (Authentication > Sign-in method).\n3. If you want to sync instantly, you can also register/login with the Email & Password option provided!`);
@@ -787,7 +793,7 @@ const App: React.FC = () => {
       handleUpdate({ ...data, students: updatedStudents });
 
       if (currentUser?.uid) {
-        const { saveStudent } = await import('./services/firebase');
+        const { saveStudent } = await import('./services/supabase');
         const student = updatedStudents.find(s => s.id === id);
         if (student) await saveStudent(currentUser.uid, student);
       }
