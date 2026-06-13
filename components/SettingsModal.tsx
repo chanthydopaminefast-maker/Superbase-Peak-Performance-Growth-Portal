@@ -45,6 +45,27 @@ const WALLPAPER_PRESETS = [
   { name: 'Minimal Solid Slate Dark', url: 'https://images.unsplash.com/photo-1533035353720-f1c6a75cd8ab?auto=format&fit=crop&q=80&w=2000' }
 ];
 
+const getDirectAuthProvidersUrl = (): string => {
+  try {
+    // @ts-ignore
+    const rawUrl = (import.meta.env?.VITE_SUPABASE_URL || '') as string;
+    if (rawUrl) {
+      let cleanUrl = rawUrl;
+      if (!cleanUrl.startsWith('http')) {
+        cleanUrl = `https://${cleanUrl}`;
+      }
+      const urlObj = new URL(cleanUrl);
+      const hostname = urlObj.hostname;
+      if (hostname.endsWith('.supabase.co')) {
+        return `https://supabase.com/dashboard/project/${hostname.split('.')[0]}/auth/providers`;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'https://supabase.com/dashboard/project/kugvbcwrjzoxkabpjvcr/auth/providers';
+};
+
 export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate, currentUser, onLogin, onPhoneLogin, onLogout, appData, onImportData }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -161,10 +182,25 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     setEmailError('');
     setIsEmailLoading(true);
     try {
-      const { supabase } = await import('../services/supabase');
+      const { supabase, isSupabaseConfigured } = await import('../services/supabase');
+      if (!isSupabaseConfigured()) {
+        throw new Error("Supabase is not configured yet! Please check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your environment variables/secrets menu.");
+      }
       if (isSignUpMode) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        
+        if (data?.user && data.user.identities && data.user.identities.length === 0) {
+          throw new Error("This email is already registered. Please sign in instead.");
+        }
+        
+        if (data?.session === null) {
+          alert("Success! A confirmation link has been sent to your email. Please check your inbox and verify your account to log in. (Note: You can turn off 'Confirm email' in your Supabase dashboard to login instantly)");
+          setIsSignUpMode(false);
+          setPassword('');
+        } else {
+          // alert("Signed up successfully!");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -230,94 +266,28 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                 <div className="bg-white/50 border border-white/60 p-4 rounded-2xl space-y-4 shadow-sm flex flex-col items-center text-center">
                     {currentUser?.uid ? (
                         <>
-                          {mongoStatus.connected ? (
-                            <>
-                              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-2">
-                                <Check size={24} strokeWidth={3} />
+                          <>
+                            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-2">
+                              <Check size={24} strokeWidth={3} />
+                            </div>
+                            <div className="w-full">
+                              <p className="text-sm font-black text-slate-800 mb-1">Synced & Backed Up</p>
+                              {currentUser?.email && <p className="text-[10px] font-bold text-orange-600 mb-1 break-all tracking-tight">{currentUser.email}</p>}
+                              <div className="flex items-center gap-1.5 justify-center mb-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] font-black text-emerald-600">Supabase DB Connected</span>
                               </div>
-                              <div className="w-full">
-                                <p className="text-sm font-black text-slate-800 mb-1">Synced & Backed Up</p>
-                                {currentUser?.email && <p className="text-[10px] font-bold text-orange-600 mb-1 break-all tracking-tight">{currentUser.email}</p>}
-                                <div className="flex items-center gap-1.5 justify-center mb-2">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                  <span className="text-[10px] font-black text-emerald-600">MongoDB Atlas Connected</span>
-                                </div>
-                                <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                                  Your data is successfully synchronizing live to your cloud database!
-                                </p>
-                                <button 
-                                  onClick={onLogout}
-                                  className="px-4 py-2 border border-slate-200 bg-white text-slate-600 rounded-lg hover:bg-slate-50 hover:text-red-500 transition-colors font-bold text-xs flex items-center gap-2 mx-auto"
-                                >
-                                  <LogOut size={14} /> Sign Out
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-2">
-                                <Cloud size={24} strokeWidth={2} className="animate-bounce" />
-                              </div>
-                              <div className="w-full">
-                                <p className="text-sm font-black text-rose-800 mb-1">Offline • Local Isolated Mode</p>
-                                {currentUser?.email && <p className="text-[10px] font-bold text-rose-600 mb-1 break-all tracking-tight">{currentUser.email}</p>}
-                                <div className="flex items-center gap-1.5 justify-center mb-2">
-                                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                  <span className="text-[10px] font-black text-amber-600">MongoDB Sync Offline</span>
-                                </div>
-                                <p className="text-xs text-slate-500 leading-relaxed mb-4 max-w-xs mx-auto">
-                                  The server cannot connect to your MongoDB Atlas cluster! While offline, changes are stored only in this browser and will sync when connection is restored.
-                                </p>                                {/* Connection Diagnostic Report */}
-                                <div className="bg-rose-50 border border-rose-100 p-3.5 rounded-xl text-left mb-4 space-y-1 select-all">
-                                   <p className="text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1">🔗 Connection Diagnostics</p>
-                                   <p className="text-[11px] font-bold text-slate-600 leading-normal">
-                                     <strong>Status Error:</strong> {mongoStatus.error || "MongoDB unreachable or MONGODB_URI is not set."}
-                                   </p>
-                                </div>
-
-                                {/* Connection Repair Instructions */}
-                                <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-left mb-4">
-                                   <p className="text-[10px] font-black text-rose-800 uppercase tracking-widest mb-2 flex items-center gap-1">⚡ Quickest Sync Link</p>
-                                   <div className="mb-3.5 bg-orange-50 border border-orange-200 p-3 rounded-xl">
-                                     <p className="text-[11px] font-black text-orange-950 leading-snug mb-1.5">👉 Click this direct link to open your specific IP Whitelist tab immediately:</p>
-                                     <a 
-                                       href="https://cloud.mongodb.com/v2/6a2c145eb79f4a7fa23b36c5#/security/network/accessList" 
-                                       target="_blank" 
-                                       rel="noopener noreferrer" 
-                                       className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[10px] font-bold uppercase rounded-lg shadow-sm tracking-widest transition-all"
-                                     >
-                                       Open Live Network Access Link <ExternalLink size={12} />
-                                     </a>
-                                   </div>
-
-                                   <p className="text-[10px] font-black text-slate-800 uppercase tracking-wider mb-2">🛠️ How to Enable Sync (Whitelist IP)</p>
-                                   <ol className="list-decimal list-inside space-y-1.5 text-[10.5px] text-slate-600 font-medium leading-relaxed">
-                                     <li>Click the <strong className="text-orange-655 font-bold">orange button above</strong> (requires logging in if prompted).</li>
-                                     <li>Click the green <strong className="text-slate-850 font-black">+ ADD IP ADDRESS</strong> button on the right side.</li>
-                                     <li>Select <strong className="text-slate-850 font-black">Allow Access From Anywhere</strong> (adds <code className="bg-slate-200/85 text-rose-600 px-1 rounded font-mono text-[10px]">0.0.0.0/0</code>).</li>
-                                     <li>Click the green <strong className="text-slate-850 font-black">Confirm</strong> button.</li>
-                                     <li>Wait 10 seconds, then click <strong className="font-bold">Retry Ping</strong> underneath!</li>
-                                   </ol>
-                                </div>
-
-                                <div className="flex gap-2 justify-center">
-                                  <button 
-                                    onClick={checkMongoStatus}
-                                    disabled={checkingMongo}
-                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg transition-colors font-bold text-xs flex items-center gap-1.5"
-                                  >
-                                    <RefreshCw size={12} className={checkingMongo ? "animate-spin" : ""} /> Retry Ping
-                                  </button>
-                                  <button 
-                                    onClick={onLogout}
-                                    className="px-4 py-1.5 border border-slate-200 bg-white text-slate-600 rounded-lg hover:bg-slate-50 hover:text-red-500 transition-colors font-bold text-xs flex items-center gap-1.5"
-                                  >
-                                    <LogOut size={12} /> Sign Out
-                                  </button>
-                                </div>
-                              </div>
-                            </>
-                          )}
+                              <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                                Your data is successfully synchronizing live!
+                              </p>
+                              <button 
+                                onClick={onLogout}
+                                className="px-4 py-2 border border-slate-200 bg-white text-slate-600 rounded-lg hover:bg-slate-50 hover:text-red-500 transition-colors font-bold text-xs flex items-center gap-2 mx-auto"
+                              >
+                                <LogOut size={14} /> Sign Out
+                              </button>
+                            </div>
+                          </>
                         </>
                     ) : (
                         <>
@@ -329,23 +299,48 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                             <p className="text-xs text-slate-500 leading-relaxed mb-4">
                               Your data is only stored in this browser. Please sign in to sync.
                             </p>
-                            <button 
-                              onClick={() => { if(onLogin) onLogin(); }}
-                              className="px-6 w-full py-2.5 bg-orange-500 text-white rounded-xl hover:bg-orange-600 shadow-lg shadow-orange-500/30 transition-all font-black uppercase text-xs flex items-center justify-center gap-2 mb-4"
-                            >
-                              <LogIn size={16} /> Google Sign In
-                            </button>
-                            <div className="relative mb-4">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-slate-200"></div>
-                                </div>
-                                <div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400">
-                                    <span className="bg-white/50 px-2">OR</span>
-                                </div>
-                            </div>
                             {emailError && (
-                              <div className="mb-4 bg-red-50 text-red-600 border border-red-200 p-3 rounded-xl text-xs font-medium text-left leading-tight shadow-sm">
-                                {emailError}
+                              <div className="mb-4 bg-red-50 text-red-650 border border-red-200 p-4 rounded-xl text-xs font-semibold text-left leading-relaxed shadow-sm">
+                                <div className="font-black flex items-center gap-1.5 text-red-700 mb-1">
+                                  <span>⚠️ Auth Error:</span>
+                                </div>
+                                <div className="text-[11.5px] font-bold text-slate-800">{emailError}</div>
+                                
+                                {emailError.toLowerCase().includes('rate limit') && (
+                                  <div className="mt-3.5 pt-3.5 border-t border-red-200/60 text-slate-700 text-[10.5px] space-y-2.5">
+                                    <div className="font-black text-rose-800 text-[11px] uppercase tracking-wider">
+                                      Why does this happen?
+                                    </div>
+                                    <p className="leading-relaxed font-medium">
+                                      Supabase's free tier imposes strict limits on the number of sign-up confirmation emails sent (typically max 3 per hour) to prevent abuse and spam.
+                                    </p>
+                                    <div className="font-extrabold text-slate-800 uppercase tracking-widest text-[10px] bg-amber-50 border border-amber-200 p-2 rounded-lg leading-snug">
+                                      👉 QUICKEST WORKAROUND (15 SECONDS):
+                                    </div>
+                                    <div className="my-2.5 bg-orange-50/60 border border-orange-200 p-3 rounded-xl space-y-2">
+                                      <p className="font-bold text-slate-850 text-[11px] leading-snug">
+                                        Click this direct link to open your project's Email Auth Settings page immediately:
+                                      </p>
+                                      <a 
+                                        href={getDirectAuthProvidersUrl()} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[10px] font-extrabold uppercase rounded-lg shadow-sm tracking-widest transition-all w-full justify-center"
+                                      >
+                                        Open Email Providers Settings <ExternalLink size={12} />
+                                      </a>
+                                    </div>
+                                    <ol className="list-decimal list-inside space-y-1.5 text-slate-650 font-medium pl-1">
+                                      <li>Click the <strong className="text-orange-600 font-bold">orange button above</strong>.</li>
+                                      <li>In the list of Providers, click the <strong className="font-bold text-slate-900">Email</strong> accordion to expand it.</li>
+                                      <li>Toggle <strong className="font-black text-rose-700">Confirm email</strong> to <strong className="text-rose-700 uppercase font-black bg-rose-50 px-1 rounded text-[10px]">OFF</strong>.</li>
+                                      <li>Click the green <strong className="font-bold text-slate-900">Save</strong> button at the bottom of the Email section.</li>
+                                    </ol>
+                                    <p className="text-[10px] text-slate-500 italic font-medium leading-normal">
+                                      This disables the email loop completely so you can sign up and sync immediately without waiting for any activation links.
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
                              <div className="space-y-4 mb-4">

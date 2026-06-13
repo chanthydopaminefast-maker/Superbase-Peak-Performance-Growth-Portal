@@ -1,6 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+// @ts-ignore
+let supabaseUrlRaw = import.meta.env.VITE_SUPABASE_URL || '';
+if (supabaseUrlRaw) {
+  if (!supabaseUrlRaw.startsWith('http')) {
+    supabaseUrlRaw = `https://${supabaseUrlRaw}`;
+  }
+  // Strip trailing slashes and common accidental path additions like /rest/v1
+  supabaseUrlRaw = supabaseUrlRaw.replace(/\/+$/, '');
+  if (supabaseUrlRaw.endsWith('/rest/v1')) {
+    supabaseUrlRaw = supabaseUrlRaw.replace(/\/rest\/v1$/, '');
+  }
+}
+const supabaseUrl = supabaseUrlRaw || undefined;
+// @ts-ignore
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -13,15 +26,31 @@ export const supabase = createClient(
   supabaseAnonKey || 'dummy-key'
 );
 
+export const getSupabaseProjectId = () => {
+  if (!supabaseUrl) return 'kugvbcwrjzoxkabpjvcr'; // Provide default from screenshot just in case
+  try {
+    const urlObj = new URL(supabaseUrl);
+    const hostname = urlObj.hostname;
+    if (hostname.endsWith('.supabase.co')) {
+      return hostname.split('.')[0];
+    }
+  } catch (e) {
+    const match = supabaseUrl.match(/(?:https?:\/\/)?([^.]+)\.supabase\.(?:co|net)/);
+    if (match) return match[1];
+  }
+  return 'kugvbcwrjzoxkabpjvcr';
+};
+
+export const getSupabaseAuthProvidersUrl = () => {
+  const proj = getSupabaseProjectId();
+  return `https://supabase.com/dashboard/project/${proj}/auth/providers`;
+};
+
 /**
  * Authentication with Supabase
  */
-export const signInWithGoogle = async () => {
-  if (!supabaseUrl || !supabaseAnonKey) return;
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-  });
-  if (error) console.error("Error signing in with Google via Supabase:", error.message);
+export const isSupabaseConfigured = () => {
+  return !!supabaseUrl && !!supabaseAnonKey;
 };
 
 export const logOut = async () => {

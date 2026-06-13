@@ -17,7 +17,7 @@ import { MaintenancePanel } from './components/MaintenancePanel';
 import Dashboard from './components/Dashboard';
 import { FloatingToolbar } from './components/FloatingToolbar';
 import { AppData, Student, CurrentUser, UserRole, ColumnConfig, Tab, ViewMode, AppSettings, StudentCategory, JournalEntry, ExpenseEntry } from './types';
-import { subscribeToData, saveData, signInWithGoogle, logOut, supabase } from './services/supabase';
+import { subscribeToData, saveData, logOut, supabase } from './services/supabase';
 import { decodeFromURLSafeBase64 } from './services/sharingEncoder';
 import { storage } from './services/storage';
 import { Menu, MessageSquare, X, GraduationCap } from 'lucide-react';
@@ -753,12 +753,7 @@ const App: React.FC = () => {
   };
 
   const handleLogin = async (_name?: string, role: UserRole = 'Admin', _pin?: string) => {
-    try {
-      await signInWithGoogle();
-    } catch (error: any) {
-      console.error(error);
-      alert(`Google Sign-In failed: ${error.message || "Please check your network and configuration"}\n\nTroubleshooting:\n1. If you are previewing this app inside the AI Studio frame, please open the application in a NEW TAB using the button in the top right, as browser privacy policies block auth popups/redirects inside third-party iframes.\n2. Ensure the Google Sign-in provider is enabled in your Firebase Console (Authentication > Sign-in method).\n3. If you want to sync instantly, you can also register/login with the Email & Password option provided!`);
-    }
+    // Deprecated: Google Sign-in removed
   };
 
   const handlePhoneLogin = (userResult: any) => {
