@@ -41,16 +41,24 @@ let lastSyncStatus = false;
 let isConfigCheckInProgress = false;
 
 // @ts-ignore
-let supabaseUrlRaw = import.meta.env.VITE_SUPABASE_URL || '';
+let supabaseUrlRaw = (import.meta.env.VITE_SUPABASE_URL || '').trim();
 if (supabaseUrlRaw) {
+  // If the user just pasted the project ID (e.g. kugvbcwrjzoxkabpjvcr), fix it
+  if (!supabaseUrlRaw.includes('.') && !supabaseUrlRaw.includes('localhost')) {
+    supabaseUrlRaw = `${supabaseUrlRaw}.supabase.co`;
+  }
+  
   if (!supabaseUrlRaw.startsWith('http')) {
     supabaseUrlRaw = `https://${supabaseUrlRaw}`;
   }
   supabaseUrlRaw = supabaseUrlRaw.replace(/\/+$/, '');
+  if (supabaseUrlRaw.endsWith('/rest/v1')) {
+    supabaseUrlRaw = supabaseUrlRaw.replace(/\/rest\/v1$/, '');
+  }
 }
 const supabaseUrl = supabaseUrlRaw || undefined;
 // @ts-ignore
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 const isConfigured = !!supabaseUrl && !!supabaseAnonKey && !supabaseAnonKey.includes('dummy');
 

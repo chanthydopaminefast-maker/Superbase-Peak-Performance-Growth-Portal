@@ -4,7 +4,7 @@ import {
   ShieldCheck, RefreshCw, Clock, Lock, Unlock, Download, Upload, Database, ExternalLink, Camera, Sparkles,
   CalendarDays, CalendarRange, History
 } from 'lucide-react';
-import { getCloudBackups, createCloudBackup } from '../services/supabase';
+import { getCloudBackups, createCloudBackup, getSupabaseProjectId } from '../services/supabase';
 import { format, differenceInDays } from 'date-fns';
 
 interface Props {
@@ -66,9 +66,17 @@ ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
 
   const FIREBASE_CONSOLE_URL = "https://console.firebase.google.com/project/dps-staff-portal/firestore/data";
 
+  const getUserId = () => {
+    try {
+      const stored = localStorage.getItem('dps_user');
+      if (stored) return JSON.parse(stored).uid || 'anon';
+    } catch(e) {}
+    return 'anon';
+  };
+
   const fetchBackups = async () => {
     setLoading(true);
-    const list = await getCloudBackups();
+    const list = await getCloudBackups(getUserId());
     setBackups(list);
     setLoading(false);
   };
@@ -103,7 +111,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
     if (creatingBackup) return;
     setCreatingBackup(true);
     try {
-        await createCloudBackup(data, 'Manual');
+        await createCloudBackup(getUserId(), data);
         await fetchBackups();
         alert("Manual Snapshot created successfully!");
     } catch (err) {
@@ -345,14 +353,24 @@ ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
                                         ⚡ Supabase Cloud Sync Setup
                                     </div>
 
-                                    <div className="bg-orange-50 border border-orange-200 p-4 rounded-2xl">
-                                        <p className="font-bold text-orange-950 text-xs mb-2 leading-snug">👉 Run the required SQL in your Supabase Dashboard:</p>
-                                        <button 
-                                            onClick={handleCopySql}
-                                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[10px] font-bold uppercase rounded-xl shadow-lg tracking-wider transition-all"
-                                        >
-                                            Copy SQL Setup Script <ExternalLink size={14} />
-                                        </button>
+                                    <div className="bg-orange-50 border border-orange-200 p-4 rounded-2xl space-y-3">
+                                        <p className="font-bold text-orange-950 text-xs leading-snug">👉 Direct Setup Links:</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            <a 
+                                                href={`https://supabase.com/dashboard/project/${getSupabaseProjectId()}/sql`} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-black active:scale-95 text-white text-[10px] font-bold uppercase rounded-xl shadow-lg tracking-wider transition-all"
+                                            >
+                                                Open Supabase SQL Editor <ExternalLink size={14} />
+                                            </a>
+                                            <button 
+                                                onClick={handleCopySql}
+                                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[10px] font-bold uppercase rounded-xl shadow-lg tracking-wider transition-all"
+                                            >
+                                                Copy SQL Setup Script <ExternalLink size={14} />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="text-slate-800 font-bold uppercase tracking-wide text-[10px]">
