@@ -22,12 +22,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // Create a single supabase client for interacting with your database
 export const supabase = createClient(
-  supabaseUrl || 'https://dummy-project.supabase.co', 
+  supabaseUrl || 'https://kugvbcwrjzoxkabpjvcr.supabase.co', 
   supabaseAnonKey || 'dummy-key'
 );
 
 export const getSupabaseProjectId = () => {
-  if (!supabaseUrl) return 'kugvbcwrjzoxkabpjvcr'; // Provide default from screenshot just in case
+  if (!supabaseUrl || supabaseUrl.includes('dummy')) return 'kugvbcwrjzoxkabpjvcr'; 
   try {
     const urlObj = new URL(supabaseUrl);
     const hostname = urlObj.hostname;
@@ -145,22 +145,101 @@ export const saveData = async (userId: string, dataState: any) => {
   }
 };
 
-// --- DUMMY IMPLEMENTATIONS FOR SHIMS ---
-export const saveTopic = async (...args: any[]) => {};
-export const deleteStudent = async (...args: any[]) => {};
-export const saveStudent = async (...args: any[]) => {};
-export const deleteTopic = async (...args: any[]) => {};
-export const saveTopicsBulk = async (...args: any[]) => {};
-export const saveAttendance = async (...args: any[]) => {};
-export const saveDailyNote = async (...args: any[]) => {};
-export const saveHabitCompletionBulk = async (...args: any[]) => {};
-export const saveHabitList = async (...args: any[]) => {};
-export const deleteHabit = async (...args: any[]) => {};
-export const saveHabitCompletion = async (...args: any[]) => {};
-export const saveJournalEntry = async (...args: any[]) => {};
-export const saveExpense = async (...args: any[]) => {};
-export const getSharedNote = async (...args: any[]) => null;
-export const createSharedNote = async (...args: any[]) => "dummy-share-id";
-export const getCloudBackups = async (...args: any[]) => [];
-export const createCloudBackup = async (...args: any[]) => {};
-export const getSyncStatus = () => true;
+export const uploadFile = async (userId: string, file: File): Promise<string | null> => {
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}/${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+    
+    const { data, error } = await supabase.storage
+      .from('attachments')
+      .upload(fileName, file);
+
+    if (error) {
+       // If bucket doesn't exist, try to create it? No, client cannot create buckets.
+       // We'll just log it.
+       console.error("Supabase Storage error:", error.message);
+       return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('attachments')
+      .getPublicUrl(fileName);
+
+    return publicUrl;
+  } catch (err) {
+    console.error("File upload failed:", err);
+    return null;
+  }
+};
+
+export const deleteFile = async (path: string) => {
+  if (!supabaseUrl || !supabaseAnonKey) return;
+  try {
+    const filePath = path.split('/storage/v1/object/public/attachments/')[1];
+    if (filePath) {
+      await supabase.storage.from('attachments').remove([filePath]);
+    }
+  } catch (err) {}
+};
+
+export const saveTopic = async (userId: string, topic: any, category: string) => {
+  // If we had a topics table, we'd sync it here. 
+  // For now, App.tsx calls saveData which handles the whole blob.
+  // We keep this shim for compatibility and potentially future logic.
+};
+
+export const deleteStudent = async (userId: string, studentId: string) => {};
+export const saveStudent = async (userId: string, student: any) => {};
+export const deleteTopic = async (userId: string, topicId: string, category: string) => {};
+export const saveTopicsBulk = async (userId: string, ...args: any[]) => {};
+export const saveAttendance = async (userId: string, ...args: any[]) => {};
+export const saveDailyNote = async (userId: string, date: string, content: string) => {};
+export const saveHabitCompletionBulk = async (userId: string, date: string, completions: any) => {};
+export const saveHabitList = async (userId: string, habits: any[]) => {};
+export const deleteHabit = async (userId: string, habitId: string) => {};
+export const saveHabitCompletion = async (userId: string, date: string, habitId: string, value: any) => {};
+export const saveJournalEntry = async (userId: string, date: string, entry: any) => {};
+export const saveExpense = async (userId: string, expense: any, isDelete: boolean) => {};
+export const getSharedNote = async (shareId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('dps_shares')
+      .select('*')
+      .eq('id', shareId)
+      .single();
+    if (error) return null;
+    return data;
+  } catch (e) { return null; }
+};
+
+export const createSharedNote = async (userId: string, ownerName: string, type: string, title: string, payload: any) => {
+  try {
+    const id = Math.random().toString(36).substring(2, 12);
+    const { error } = await supabase
+      .from('dps_shares')
+      .insert({
+        id,
+        owner_id: userId,
+        owner_name: ownerName,
+        type,
+        title,
+        payload,
+        created_at: new Date().toISOString()
+      });
+    if (error) throw error;
+    return id;
+  } catch (e) {
+    throw e;
+  }
+};
+
+export const getCloudBackups = async (userId: string) => [];
+export const createCloudBackup = async (userId: string, data: any) => {};
+export const getSyncStatus = async () => {
+    if (!supabaseUrl || !supabaseAnonKey) return false;
+    try {
+        const { data, error } = await supabase.from('dps_data').select('count', { count: 'exact', head: true }).limit(1);
+        return !error;
+    } catch (e) { return false; }
+};

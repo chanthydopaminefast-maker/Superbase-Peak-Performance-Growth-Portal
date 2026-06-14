@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, CurrentUser, AppData } from '../types';
 import { X, Save, Settings2, Type, Baseline, Paintbrush, Check, Cloud, LogIn, LogOut, Image as ImageIcon, Trash2, FileText, Coins, Table, Download, Upload, RefreshCw, ExternalLink } from 'lucide-react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
+import { getSupabaseProjectId } from '../services/supabase';
 
 interface Props {
   isOpen: boolean;
@@ -295,7 +296,9 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                               {currentUser?.email && <p className="text-[10px] font-bold text-orange-600 mb-1 break-all tracking-tight">{currentUser.email}</p>}
                               <div className="flex items-center gap-1.5 justify-center mb-2">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-[10px] font-black text-emerald-600">Supabase DB Connected</span>
+                                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none">
+                                  Supabase Cloud Active ({getSupabaseProjectId()})
+                                </span>
                               </div>
                               <p className="text-xs text-slate-500 leading-relaxed mb-4">
                                 Your data is successfully synchronizing live!

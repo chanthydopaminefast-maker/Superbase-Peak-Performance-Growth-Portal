@@ -41,6 +41,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   const [showAllHighlightColors, setShowAllHighlightColors] = useState(false);
   const [activeColor, setActiveColor] = useState<string | null>(null);
   const [isAILoading, setIsAILoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isStudyPlanLoading, setIsStudyPlanLoading] = useState(false);
   const [isActionPlanLoading, setIsActionPlanLoading] = useState(false);
   const [showAIModal, setShowAIModal] = useState(false);
@@ -1823,49 +1824,85 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     }
   }, [selectedTopicId, isSelectedTopicPlan]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedTopic) return;
-
-    // Use a basic FileReader to generate data URL and insert it
     const file = files[0];
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      let html = '';
-      
-      try {
-        if (file.type.startsWith('image/')) {
-            html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="uploaded image" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
-        } else if (file.type.startsWith('video/')) {
-            html = `<div contenteditable="false" style="margin: 15px 0; text-align: center;"><video controls src="${dataUrl}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></video></div><p><br></p>`;
-        } else if (file.type.startsWith('audio/')) {
-            html = `<div contenteditable="false" style="margin: 15px 0; text-align: center; background: rgba(255,255,255,0.4); padding: 15px; border-radius: 50px;"><audio controls src="${dataUrl}" style="width: 100%; outline: none;"></audio></div><p><br></p>`;
-        } else {
-            // General file link (PDF, MS Word)
-            html = `<div contenteditable="false" style="margin: 15px 0; padding: 12px 16px; background: rgba(241, 245, 249, 0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; display: inline-block;">
-                <a href="${dataUrl}" download="${file.name}" target="_blank" rel="noopener noreferrer" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">📎 Open/Download: ${file.name}</a>
-            </div><p><br></p>`;
-        }
-        if (editorRef.current) {
-          editorRef.current.focus();
-          if (savedRange.current) {
-            const selection = window.getSelection();
-            selection?.removeAllRanges();
-            selection?.addRange(savedRange.current);
-          }
-        }
-        document.execCommand('insertHTML', false, html);
-        if (editorRef.current) {
-           updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
-        }
-      } catch (err) {
-        console.error("Storage / Quota error likely:", err);
-        alert("File may be too large to save in local storage. Consider using Firebase.");
+    
+    setIsUploading(true);
+    try {
+      const { uploadFile } = await import('../services/supabase');
+      const storedUser = localStorage.getItem('dps_user');
+      let userId = 'anon';
+      if (storedUser) {
+        try {
+          const u = JSON.parse(storedUser);
+          userId = u.uid || 'anon';
+        } catch (e) {}
       }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = ''; // reset
+
+      const publicUrl = await uploadFile(userId, file);
+      
+      let html = '';
+      if (!publicUrl) {
+          // If Supabase upload fails (e.g. no bucket), fall back to Data URL with warning
+          const reader = new FileReader();
+          reader.onload = (event) => {
+              const dataUrl = event.target?.result as string;
+              if (file.size > 500 * 1024 && !confirm("This file is too large for local-only storage and will NOT sync across devices. Continue?")) {
+                  setIsUploading(false);
+                  return;
+              }
+              
+              if (file.type.startsWith('image/')) {
+                  html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="uploaded image" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
+              } else if (file.type.startsWith('video/')) {
+                  html = `<div contenteditable="false" style="margin: 15px 0; text-align: center;"><video controls src="${dataUrl}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></video></div><p><br></p>`;
+              } else if (file.type.startsWith('audio/')) {
+                  html = `<div contenteditable="false" style="margin: 15px 0; text-align: center; background: rgba(255,255,255,0.4); padding: 15px; border-radius: 50px;"><audio controls src="${dataUrl}" style="width: 100%; outline: none;"></audio></div><p><br></p>`;
+              } else {
+                  html = `<div contenteditable="false" style="margin: 15px 0; padding: 12px 16px; background: rgba(241, 245, 249, 0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; display: inline-block;"><a href="${dataUrl}" download="${file.name}" target="_blank" rel="noopener noreferrer" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">📎 Open/Download: ${file.name}</a></div><p><br></p>`;
+              }
+              insertContent(html);
+              setIsUploading(false);
+          };
+          reader.readAsDataURL(file);
+          return;
+      }
+
+      // Success cloud upload
+      if (file.type.startsWith('image/')) {
+          html = `<div style="margin: 15px 0; text-align: center;"><img src="${publicUrl}" alt="uploaded image" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
+      } else if (file.type.startsWith('video/')) {
+          html = `<div contenteditable="false" style="margin: 15px 0; text-align: center;"><video controls src="${publicUrl}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></video></div><p><br></p>`;
+      } else if (file.type.startsWith('audio/')) {
+          html = `<div contenteditable="false" style="margin: 15px 0; text-align: center; background: rgba(255,255,255,0.4); padding: 15px; border-radius: 50px;"><audio controls src="${publicUrl}" style="width: 100%; outline: none;"></audio></div><p><br></p>`;
+      } else {
+          html = `<div contenteditable="false" style="margin: 15px 0; padding: 12px 16px; background: rgba(241, 245, 249, 0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; display: inline-block;"><a href="${publicUrl}" download="${file.name}" target="_blank" rel="noopener noreferrer" style="color: #0ea5e9; font-weight: bold; text-decoration: none;">📎 Open/Download: ${file.name}</a></div><p><br></p>`;
+      }
+      insertContent(html);
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Upload failed.");
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const insertContent = (html: string) => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+      if (savedRange.current) {
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(savedRange.current);
+      }
+      document.execCommand('insertHTML', false, html);
+      if (selectedTopic) {
+        updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      }
+    }
   };
   
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);

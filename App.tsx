@@ -159,16 +159,17 @@ const App: React.FC = () => {
   const OFFICIAL_DAILY_TASKS = useMemo(() => [], []);
 
   const previousDataSyncRef = useRef<string | null>(null);
+  const isCloudLoadedRef = useRef(false);
 
   // Supabase Global Auto-Sync Hook
   useEffect(() => {
-    if (currentUser?.uid && !loading && data) {
+    if (currentUser?.uid && !loading && data && isCloudLoadedRef.current) {
       const dataStr = JSON.stringify(data);
       if (dataStr === previousDataSyncRef.current) return;
       previousDataSyncRef.current = dataStr;
 
       const timer = setTimeout(() => {
-        saveData(currentUser.uid, data);
+        saveData(currentUser.uid!, data);
       }, 1500); // 1.5s debounce
       return () => clearTimeout(timer);
     }
@@ -369,7 +370,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // 1. Asynchronously restore full unlimited data from IndexedDB
     storage.getItem('dps_data').then((stored) => {
-      if (stored) {
+      // Only set local data if cloud hasn't arrived yet
+      if (stored && !isCloudLoadedRef.current) {
         try {
           const parsed = JSON.parse(stored);
           if (parsed) {
@@ -392,10 +394,13 @@ const App: React.FC = () => {
     const uid = currentUser?.uid;
     if (!uid) {
       setLoading(false);
+      // If logging out, we can mark cloud as "loaded" so local changes don't try to push
+      isCloudLoadedRef.current = true;
       return;
     }
     setLoading(true);
     const unsubscribe = subscribeToData(uid, (newData) => {
+      isCloudLoadedRef.current = true;
       // Ensure DEFAULT_COLUMNS are initialized
       if (!newData.settings?.columns) {
           newData.settings = { ...(newData.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" }), columns: DEFAULT_COLUMNS };
@@ -425,7 +430,10 @@ const App: React.FC = () => {
       setData(newData);
       storage.setItem('dps_data', JSON.stringify(newData)); // SYNC to storage
       setLoading(false);
-    }, () => setLoading(false));
+    }, () => {
+      isCloudLoadedRef.current = true; // Still mark as loaded to allow local mode push if empty
+      setLoading(false);
+    });
     return () => unsubscribe();
   }, [currentUser?.uid, isAuthInitializing]);
 
