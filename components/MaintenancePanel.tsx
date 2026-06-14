@@ -18,32 +18,50 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate }) => {
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [activeTab, setActiveTab] = useState<'Backups' | 'Safety' | 'Locks'>('Backups');
 
-  const [mongoStatus, setMongoStatus] = useState<{ configured: boolean; connected: boolean; error: string | null }>({
+  const [syncStatus, setSyncStatus] = useState<{ configured: boolean; connected: boolean; error: string | null }>({
     configured: false,
     connected: false,
     error: null
   });
-  const [checkingMongo, setCheckingMongo] = useState(false);
+  const [checkingSync, setCheckingSync] = useState(false);
 
-  const checkMongoStatus = async () => {
-    setCheckingMongo(true);
+  const checkSyncStatus = async () => {
+    setCheckingSync(true);
     try {
-      const res = await fetch('/api/mongodb/status');
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 120)}`);
-      }
-      const json = await res.json();
-      setMongoStatus(json);
+      const { isSupabaseConfigured, checkSupabaseConnection } = await import('../services/supabase');
+      const configured = isSupabaseConfigured();
+      const connected = await checkSupabaseConnection();
+      setSyncStatus({ 
+        configured, 
+        connected, 
+        error: !configured ? "Environment variables VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY are missing." : (connected ? null : "Could not reach Supabase. Ensure 'dps_data' table exists and RLS is configured.")
+      });
     } catch (err: any) {
-      setMongoStatus({ configured: false, connected: false, error: err.message || String(err) });
+      setSyncStatus({ configured: false, connected: false, error: err.message || String(err) });
     } finally {
-      setCheckingMongo(false);
+      setCheckingSync(false);
     }
   };
 
+  const SUPABASE_SQL_SETUP = `
+-- Run this in Supabase SQL Editor
+CREATE TABLE IF NOT EXISTS public.dps_data (
+    owner_id UUID PRIMARY KEY,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.dps_data ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own data" ON public.dps_data FOR ALL USING (auth.uid() = owner_id);
+ALTER PUBLICATION supabase_realtime ADD TABLE dps_data;
+  `.trim();
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SQL_SETUP);
+    alert("SQL copied to clipboard!");
+  };
+
   useEffect(() => {
-    checkMongoStatus();
+    checkSyncStatus();
   }, []);
 
   const FIREBASE_CONSOLE_URL = "https://console.firebase.google.com/project/dps-staff-portal/firestore/data";
@@ -267,14 +285,14 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate }) => {
                             ))}
                         </div>
 
-                        {/* MongoDB Integration Control Panel */}
+                        {/* Supabase Integration Control Panel */}
                         <div className="bg-slate-50 border border-slate-200 p-8 rounded-[40px] mt-12 space-y-6">
                             <div className="flex items-start justify-between gap-6 flex-wrap md:flex-nowrap">
                                 <div className="flex items-start gap-5">
                                     <div className={`w-14 h-14 rounded-3xl flex items-center justify-center border shadow-sm transition-all ${
-                                        mongoStatus.connected 
+                                        syncStatus.connected 
                                             ? 'bg-emerald-50 border-emerald-200 text-emerald-600 shadow-emerald-100' 
-                                            : !mongoStatus.configured 
+                                            : !syncStatus.configured 
                                                 ? 'bg-amber-50 border-amber-200 text-amber-600 shadow-amber-100' 
                                                 : 'bg-rose-50 border-rose-200 text-rose-600 shadow-rose-100'
                                     }`}>
@@ -282,16 +300,16 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate }) => {
                                     </div>
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-3">
-                                            <h4 className="font-black text-slate-800 uppercase text-base tracking-tight leading-none">MongoDB Atlas Database</h4>
-                                            {mongoStatus.connected ? (
+                                            <h4 className="font-black text-slate-800 uppercase text-base tracking-tight leading-none">Supabase Cloud Database</h4>
+                                            {syncStatus.connected ? (
                                                 <span className="flex items-center gap-1.5 text-[9px] font-black text-emerald-600 bg-emerald-100/80 px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                                     Active Cloud Sync
                                                 </span>
-                                            ) : !mongoStatus.configured ? (
+                                            ) : !syncStatus.configured ? (
                                                 <span className="flex items-center gap-1.5 text-[9px] font-black text-amber-600 bg-amber-100/80 px-2.5 py-1 rounded-full uppercase tracking-wider">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                                    Sandbox Local Fallback
+                                                    Missing Configuration
                                                 </span>
                                             ) : (
                                                 <span className="flex items-center gap-1.5 text-[9px] font-black text-rose-600 bg-rose-100/80 px-2.5 py-1 rounded-full uppercase tracking-wider">
@@ -301,54 +319,52 @@ export const MaintenancePanel: React.FC<Props> = ({ data, onUpdate }) => {
                                             )}
                                         </div>
                                         <p className="text-xs text-slate-500 font-medium">
-                                            {mongoStatus.connected 
-                                                ? "Your master digital portal sheets, topics, and student ledger are actively saved in MongoDB. 16MB document sizes allowed (Unlimited file capacity)."
-                                                : !mongoStatus.configured 
-                                                    ? "Connected to reactive local database storage. Setup your production MongoDB connection to synchronize records globally."
-                                                    : `An issue occurred while reaching your MongoDB Atlas cluster: ${mongoStatus.error}`
+                                            {syncStatus.connected 
+                                                ? "Your master digital portal sheets, topics, and student ledger are actively saved in Supabase Cloud. Real-time multi-browser sync is enabled."
+                                                : !syncStatus.configured 
+                                                    ? "Connected to reactive local database storage. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to synchronize records globally."
+                                                    : `An issue occurred while reaching your Supabase project: ${syncStatus.error}`
                                             }
                                         </p>
                                     </div>
                                 </div>
                                 <button 
-                                    onClick={checkMongoStatus}
-                                    disabled={checkingMongo}
+                                    onClick={checkSyncStatus}
+                                    disabled={checkingSync}
                                     className="px-6 py-3.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase shadow-xs hover:border-indigo-500 hover:text-indigo-600 hover:bg-slate-50 transition-all flex items-center gap-2 shrink-0 disabled:opacity-50"
                                 >
-                                    <RefreshCw size={14} className={checkingMongo ? "animate-spin" : ""} />
-                                    {checkingMongo ? "Pinging..." : "Test Link"}
+                                    <RefreshCw size={14} className={checkingSync ? "animate-spin" : ""} />
+                                    {checkingSync ? "Pinging..." : "Test Link"}
                                 </button>
                             </div>
 
-                            {!mongoStatus.connected && (
+                            {!syncStatus.connected && (
                                 <div className="p-6 bg-slate-100/50 rounded-3xl border border-slate-200/60 text-xs text-slate-600 space-y-5">
                                     <div className="flex items-center gap-2 text-rose-800 font-bold uppercase tracking-widest text-[11px]">
                                         <Sparkles size={14} className="text-orange-500" />
-                                        ⚡ Quickest Link for live syncing
+                                        ⚡ Supabase Cloud Sync Setup
                                     </div>
 
                                     <div className="bg-orange-50 border border-orange-200 p-4 rounded-2xl">
-                                        <p className="font-bold text-orange-950 text-xs mb-2 leading-snug">👉 Open your IP Access Whitelist directly with this link:</p>
-                                        <a 
-                                            href="https://cloud.mongodb.com/v2/6a2c145eb79f4a7fa23b36c5#/security/network/accessList" 
-                                            target="_blank" 
-                                            rel="noopener noreferrer" 
+                                        <p className="font-bold text-orange-950 text-xs mb-2 leading-snug">👉 Run the required SQL in your Supabase Dashboard:</p>
+                                        <button 
+                                            onClick={handleCopySql}
                                             className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[10px] font-bold uppercase rounded-xl shadow-lg tracking-wider transition-all"
                                         >
-                                            Open Live Network Access Link <ExternalLink size={14} />
-                                        </a>
+                                            Copy SQL Setup Script <ExternalLink size={14} />
+                                        </button>
                                     </div>
 
                                     <div className="text-slate-800 font-bold uppercase tracking-wide text-[10px]">
-                                        🛠️ Simple Steps to Allow Sync
+                                        🛠️ Vercel Deployment Sync Steps
                                     </div>
-                                    <ol className="list-decimal list-inside space-y-2 pl-1 leading-relaxed text-[11px] font-medium text-slate-500">
-                                        <li>Click the <strong className="text-orange-655 font-bold">orange button above</strong> to go straight to your Network Access list in MongoDB.</li>
-                                        <li>On the right, click the green <strong className="text-slate-800">+ ADD IP ADDRESS</strong> button.</li>
-                                        <li>Select <strong className="text-slate-800">Allow Access From Anywhere</strong> (which fills in <code className="bg-slate-200/80 text-rose-600 px-1 py-0.5 rounded font-mono text-[10px]">0.0.0.0/0</code>).</li>
-                                        <li>Click the green <strong className="text-slate-800 font-bold">Confirm</strong> button.</li>
-                                        <li>Wait about 10 seconds for MongoDB to activate it, then click the <strong>Test Link</strong> button above!</li>
-                                    </ol>
+                                    <ul className="list-disc list-inside space-y-2 pl-1 leading-relaxed text-[11px] font-medium text-slate-500">
+                                        <li>Go to your **Vercel Project Settings** &gt; **Environment Variables**.</li>
+                                        <li>Add **VITE_SUPABASE_URL** (from Supabase Settings &gt; API).</li>
+                                        <li>Add **VITE_SUPABASE_ANON_KEY** (from Supabase Settings &gt; API).</li>
+                                        <li>Redeploy your application on Vercel.</li>
+                                        <li>Ensure the **dps_data** table exists (use the SQL script above).</li>
+                                    </ul>
                                 </div>
                             )}
                         </div>

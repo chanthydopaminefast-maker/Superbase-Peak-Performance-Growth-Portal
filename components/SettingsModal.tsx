@@ -117,33 +117,34 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
 
-  const [mongoStatus, setMongoStatus] = useState<{ configured: boolean; connected: boolean; error: string | null }>({
+  const [syncStatus, setSyncStatus] = useState<{ configured: boolean; connected: boolean; error: string | null }>({
     configured: false,
     connected: false,
     error: null
   });
-  const [checkingMongo, setCheckingMongo] = useState(false);
+  const [checkingSync, setCheckingSync] = useState(false);
 
-  const checkMongoStatus = async () => {
-    setCheckingMongo(true);
+  const checkSyncStatus = async () => {
+    setCheckingSync(true);
     try {
-      const res = await fetch('/api/mongodb/status');
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 120)}`);
-      }
-      const json = await res.json();
-      setMongoStatus(json);
+      const { isSupabaseConfigured, checkSupabaseConnection } = await import('../services/supabase');
+      const configured = isSupabaseConfigured();
+      const connected = await checkSupabaseConnection();
+      setSyncStatus({ 
+        configured, 
+        connected, 
+        error: !configured ? "Missing VITE_SUPABASE keys." : (connected ? null : "Could not reach database.")
+      });
     } catch (err: any) {
-      setMongoStatus({ configured: false, connected: false, error: err.message || String(err) });
+      setSyncStatus({ configured: false, connected: false, error: err.message || String(err) });
     } finally {
-      setCheckingMongo(false);
+      setCheckingSync(false);
     }
   };
 
   useEffect(() => {
     if (isOpen) {
-      checkMongoStatus();
+      checkSyncStatus();
     }
   }, [isOpen]);
 
@@ -296,8 +297,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                               {currentUser?.email && <p className="text-[10px] font-bold text-orange-600 mb-1 break-all tracking-tight">{currentUser.email}</p>}
                               <div className="flex items-center gap-1.5 justify-center mb-2">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none">
-                                  Supabase Cloud Active ({getSupabaseProjectId()})
+                                <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${syncStatus.connected ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                  {syncStatus.connected ? `Supabase Cloud Active (${getSupabaseProjectId()})` : (syncStatus.configured ? 'Supabase Connection Error' : 'Supabase Not Configured')}
                                 </span>
                               </div>
                               <p className="text-xs text-slate-500 leading-relaxed mb-4">

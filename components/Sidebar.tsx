@@ -79,16 +79,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    const checkSyncStatus = () => {
-      const active = typeof window !== 'undefined' && window.navigator.onLine && getSyncStatus();
+    const checkStatus = async () => {
+      const { checkSupabaseConnection } = await import('../services/supabase');
+      const active = typeof window !== 'undefined' && window.navigator.onLine && await checkSupabaseConnection();
       setIsOnline(!!active);
     };
 
-    checkSyncStatus();
+    checkStatus();
+    const interval = setInterval(checkStatus, 15000); // Check every 15s
 
-    const interval = setInterval(checkSyncStatus, 3000);
-
-    const handleOnline = () => setIsOnline(getSyncStatus());
+    const handleOnline = () => checkStatus();
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
@@ -206,9 +206,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       className={`text-[9px] font-black leading-none ${isOnline ? 'text-emerald-600' : 'text-amber-600/90'}`} 
                       title={
                         isOnline 
-                          ? "Connected to dynamic cloud sync" 
+                          ? "Connected to Supabase Cloud sync" 
                           : typeof window !== 'undefined' && window.navigator.onLine 
-                            ? "Internet connected, but MongoDB Atlas is unreachable! Ensure '0.0.0.0/0' (Allow Access From Anywhere) is whitelisted under Network Access in MongoDB Atlas, and verify your MONGODB_URI variable." 
+                            ? "Internet connected, but Supabase is unreachable! Ensure the 'dps_data' table exists in your Supabase project and check your VITE_SUPABASE keys." 
                             : "Offline. Notes are saved locally and will auto-sync when connection is restored."
                       }
                     >
