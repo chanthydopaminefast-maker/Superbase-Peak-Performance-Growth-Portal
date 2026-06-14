@@ -42,7 +42,27 @@ const WALLPAPER_PRESETS = [
   { name: 'Classic Japanese Washi Accent', url: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?auto=format&fit=crop&q=80&w=2000' },
   { name: 'Serene Peak Sunrise Theme', url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=2000' },
   { name: 'Lofi Cozy Coffee Workspace', url: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=2000' },
-  { name: 'Minimal Solid Slate Dark', url: 'https://images.unsplash.com/photo-1533035353720-f1c6a75cd8ab?auto=format&fit=crop&q=80&w=2000' }
+  { name: 'Minimal Solid Slate Dark', url: 'https://images.unsplash.com/photo-1533035353720-f1c6a75cd8ab?auto=format&fit=crop&q=80&w=2000' },
+  
+  // Whites & Ivory
+  { name: 'Serenity Ivory Plaster', url: 'https://images.unsplash.com/photo-1517816743773-6e0fd518b4a6?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Sands of Silence Dunes', url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Minimal Alabaster Silk', url: 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?auto=format&fit=crop&q=80&w=2000' },
+  
+  // Mooring Greens
+  { name: 'Whispering Willow Leaves', url: 'https://images.unsplash.com/photo-1512428559087-560fa5ceab42?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Mindful Sage Paint Brush', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Botanical Fern Sanctuary', url: 'https://images.unsplash.com/photo-1501004318641-724e645197c2?auto=format&fit=crop&q=80&w=2000' },
+  
+  // Calming Pinks
+  { name: 'Pastel Cherry Blossom Rain', url: 'https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Rose Quartz Aura Softness', url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Dreamy Peach Watercolor', url: 'https://images.unsplash.com/photo-1560169897-fc0cdbdfa4d5?auto=format&fit=crop&q=80&w=2000' },
+
+  // Warm Oranges
+  { name: 'Sunlit Sandy Canyons', url: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Autumn Amber Forest Pathway', url: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Golden Quartz Horizon', url: 'https://images.unsplash.com/photo-1553570739-300e6e7373f6?auto=format&fit=crop&q=80&w=2000' }
 ];
 
 const getDirectAuthProvidersUrl = (): string => {

@@ -45,7 +45,7 @@ export const RecycleBin: React.FC<Props> = ({
   const handleRestore = (id: string, type: string) => {
     if (type === 'Student') {
       const newStudents = data.students.map(s => {
-        if (s.id === id) {
+        if (String(s.id) === String(id)) {
           const { deletedAt, ...rest } = s;
           return rest;
         }
@@ -56,7 +56,7 @@ export const RecycleBin: React.FC<Props> = ({
       const field = type === 'DPSS' ? 'dpssTopics' : 'selfLearningTopics';
       const restoreInTopics = (items: any[]): any[] => {
         return items.map(item => {
-          if (item.id === id) {
+          if (String(item.id) === String(id)) {
             const { deletedAt, ...rest } = item;
             return rest;
           }
@@ -77,11 +77,11 @@ export const RecycleBin: React.FC<Props> = ({
       } else {
         // Fallback for standalone mode
         if (type === 'Student') {
-          onUpdate({ ...data, students: data.students.filter(s => s.id !== id) });
+          onUpdate({ ...data, students: data.students.filter(s => String(s.id) !== String(id)) });
         } else {
           const field = type === 'DPSS' ? 'dpssTopics' : 'selfLearningTopics';
           const deleteFromTopics = (items: any[]): any[] => {
-            return items.filter(item => item.id !== id).map(item => ({
+            return items.filter(item => String(item.id) !== String(id)).map(item => ({
               ...item,
               children: item.children ? deleteFromTopics(item.children) : undefined
             }));

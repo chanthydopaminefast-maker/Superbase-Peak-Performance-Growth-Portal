@@ -121,7 +121,15 @@ const App: React.FC = () => {
   const [redoStack, setRedoStack] = useState<AppData[]>([]);
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.SelfLearning);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    const stored = localStorage.getItem('dps_sidebar_open');
+    if (stored !== null) return stored === 'true';
+    return window.innerWidth > 768;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dps_sidebar_open', String(isSidebarOpen));
+  }, [isSidebarOpen]);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [isContactsOpen, setIsContactsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -487,6 +495,7 @@ const App: React.FC = () => {
           setRedoStack([]);
         }
         
+        previousDataSyncRef.current = JSON.stringify(newData);
         storage.setItem('dps_data', JSON.stringify(newData));
 
         if (currentUser?.uid) {
@@ -591,10 +600,12 @@ const App: React.FC = () => {
   const handleUpdateTopic = async (updatedTopics: any[], topicToSave?: any, category: 'dpss' | 'selfLearning' = 'dpss') => {
     setData(prev => {
       const newData = category === 'dpss' ? { ...prev, dpssTopics: updatedTopics } : { ...prev, selfLearningTopics: updatedTopics };
+      previousDataSyncRef.current = JSON.stringify(newData);
       storage.setItem('dps_data', JSON.stringify(newData));
 
       if (currentUser?.uid) {
-        import('./services/supabase').then(({ saveTopic, deleteTopic }) => {
+        import('./services/supabase').then(({ saveTopic, deleteTopic, saveData }) => {
+          saveData(currentUser.uid!, newData);
           if (topicToSave) {
             if (topicToSave.deleted && !topicToSave.deletedAt) {
                deleteTopic(currentUser.uid, topicToSave.id, category);

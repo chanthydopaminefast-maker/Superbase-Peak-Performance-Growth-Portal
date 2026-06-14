@@ -26,7 +26,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showExportStyleModal, setShowExportStyleModal] = useState(false);
-  const [selectedExportStyle, setSelectedExportStyle] = useState<'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro' | 'medium_bg' | 'light_bg' | 'no_bg'>('executive');
+  const [selectedExportStyle, setSelectedExportStyle] = useState<'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro' | 'medium_bg' | 'light_bg' | 'no_bg'>('no_bg');
   const [pdfCustomHeader, setPdfCustomHeader] = useState('');
   const [pdfCustomFooter, setPdfCustomFooter] = useState('');
   const [keepRowsTogether, setKeepRowsTogether] = useState(true);
@@ -78,6 +78,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   const [importJsonText, setImportJsonText] = useState('');
   const [isCopiedJson, setIsCopiedJson] = useState(false);
   const [isArchiveFolderOpen, setIsArchiveFolderOpen] = useState(false);
+  const [sidebarFilter, setSidebarFilter] = useState<'files' | 'stars'>('files');
 
   const getTopicSizeString = (topic: any): string => {
     try {
@@ -1714,29 +1715,49 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   };
 
   const deleteTopic = (id: string) => {
-    const findSpecificTopic = (items: DPSSTopic[], searchId: string): DPSSTopic | null => {
-       if (!Array.isArray(items)) return null;
-       for (const item of items) {
-         if (!item) continue;
-         if (item.id === searchId) return item;
-         if (item.children) {
-           const found = findSpecificTopic(item.children, searchId);
-           if (found) return found;
-         }
-       }
-       return null;
+    const checkLockStatus = (items: DPSSTopic[], targetId: string, parentLocked = false): { found: boolean; isLocked: boolean } => {
+      if (!Array.isArray(items)) return { found: false, isLocked: false };
+      for (const item of items) {
+        if (!item) continue;
+        const currentLocked = parentLocked || item.isLocked || false;
+        if (String(item.id) === String(targetId)) {
+          return { found: true, isLocked: currentLocked };
+        }
+        if (item.children) {
+          const res = checkLockStatus(item.children, targetId, currentLocked);
+          if (res.found) return res;
+        }
+      }
+      return { found: false, isLocked: false };
     };
+
+    const findTopicById = (items: DPSSTopic[], targetId: string): DPSSTopic | null => {
+      for (const item of items) {
+        if (String(item.id) === String(targetId)) return item;
+        if (item.children) {
+          const found = findTopicById(item.children, targetId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const status = checkLockStatus(data.selfLearningTopics || [], id);
+    const targetTopic = findTopicById(data.selfLearningTopics || [], id);
     
-    const topicToDelete = findSpecificTopic(data.selfLearningTopics || [], id);
-    if (!topicToDelete) return;
-    
-    if (topicToDelete.isLocked) {
+    // Auto-skip confirmation for newly created empty topics
+    const isEmptyNewTopic = targetTopic && 
+      (targetTopic.title.trim() === "" || targetTopic.title.toLowerCase() === "new topic") &&
+      (!targetTopic.content || targetTopic.content.trim() === "" || targetTopic.content === "<p><br></p>") &&
+      (!targetTopic.children || targetTopic.children.length === 0);
+
+    if (status.isLocked) {
       const userInput = prompt(`This folder/document is LOCKED.\nTo delete it, you must type the word "Delete" exactly:`);
       if (userInput !== "Delete") {
         if (userInput !== null) alert("Incorrect verification word. Deletion cancelled.");
         return;
       }
-    } else {
+    } else if (!isEmptyNewTopic) {
       if (!confirm('Move this topic to Recycle Bin? OK / Cancel')) {
         return;
       }
@@ -1746,7 +1767,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       if (!Array.isArray(items)) return items;
       return items.map(item => {
         if (!item) return item;
-        if (item.id === id) return { ...item, deletedAt: new Date().toISOString() };
+        if (String(item.id) === String(id)) return { ...item, deletedAt: new Date().toISOString() };
         if (item.children) return { ...item, children: markDeleted(item.children as any[]) };
         return item;
       });
@@ -3639,9 +3660,11 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         className={`
           fixed md:relative inset-y-0 left-0 z-50 md:z-30
           bg-white/95 md:bg-white/10 backdrop-blur-3xl md:backdrop-blur-md 
-          rounded-r-3xl md:rounded-3xl shrink-0 transition-[transform,opacity] duration-300 transform
-          ${isSidebarOpen ? 'p-3 md:p-6 border-r md:border border-white/20 translate-x-0' : 'p-0 border-none -translate-x-full md:translate-x-0 pointer-events-none opacity-0 select-none hidden md:hidden'}
-          flex flex-col gap-3 md:gap-4 max-[767px]:landscape:gap-2 relative select-none
+          rounded-r-3xl md:rounded-3xl shrink-0 transition-all duration-300 transform
+          ${isSidebarOpen 
+            ? 'p-3 md:p-6 border-r md:border border-white/20 translate-x-0 opacity-100 flex flex-col gap-3 md:gap-4 max-[767px]:landscape:gap-2 relative select-none' 
+            : 'p-0 border-none -translate-x-full pointer-events-none opacity-0 select-none hidden overflow-hidden shadow-none md:hidden w-0'
+          }
         `}
       >
         <div className="flex items-center justify-between mb-1 shrink-0">
@@ -3656,31 +3679,30 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
 
         {/* Unifed Scrollable Column containing action buttons, search, topics, and folder archive */}
         <div className="flex-1 overflow-y-auto pr-1 -mr-1 space-y-3 max-[767px]:landscape:space-y-2.5 custom-scrollbar flex flex-col">
-          <div className="flex flex-col max-[767px]:landscape:flex-row gap-2 shrink-0">
-            <div className="flex-1 flex flex-col gap-1.5 max-[767px]:landscape:flex-row max-[767px]:landscape:gap-1.5">
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => addTopic()} 
-                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1.5 hover:from-emerald-600 hover:to-emerald-700 shadow-xl shadow-emerald-500/20 active:scale-95 transition-all whitespace-nowrap"
-                >
-                  <Plus size={14} /> Add Topic
-                </button>
-                
-                <button 
-                  onClick={() => setIsImportModalOpen(true)} 
-                  className="px-3.5 py-2.5 bg-sky-600 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1 hover:bg-sky-700 shadow-xl shadow-sky-500/20 active:scale-95 transition-all whitespace-nowrap"
-                  title="Import Topic Folder from JSON or Clipboard"
-                >
-                  <FileUp size={14} /> Import
-                </button>
-              </div>
+          <div className="flex flex-col gap-2.5 shrink-0">
+            {/* Equal sized Action Buttons Grid */}
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <button 
+                onClick={() => addTopic()} 
+                className="py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1.5 hover:from-emerald-600 hover:to-emerald-700 shadow-xl shadow-emerald-500/20 active:scale-95 transition-all whitespace-nowrap animate-in fade-in"
+              >
+                <Plus size={14} /> Add Topic
+              </button>
               
+              <button 
+                onClick={() => setIsImportModalOpen(true)} 
+                className="py-2.5 bg-sky-600 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1 hover:bg-sky-700 shadow-xl shadow-sky-500/20 active:scale-95 transition-all whitespace-nowrap animate-in fade-in"
+                title="Import Topic Folder from JSON or Clipboard"
+              >
+                <FileUp size={14} /> Import
+              </button>
+
               {!isSelectedTopicPlan && (
                 <>
                   <button 
                     onClick={generateStudyPlan}
                     disabled={isStudyPlanLoading || isActionPlanLoading || isAILoading}
-                    className="w-full max-[767px]:landscape:flex-1 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1 hover:from-indigo-600 hover:to-purple-600 shadow-xl shadow-indigo-500/20 active:scale-95 transition-all whitespace-nowrap disabled:opacity-50"
+                    className="py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1 hover:from-indigo-600 hover:to-purple-600 shadow-xl shadow-indigo-500/20 active:scale-95 transition-all whitespace-nowrap disabled:opacity-50 animate-in fade-in"
                     title={selectedTopic ? `Generate dynamic Study Plan for: ${selectedTopic.title}` : `Generate general Study Plan for all topics`}
                   >
                     {isStudyPlanLoading ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
@@ -3690,7 +3712,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                   <button 
                     onClick={generateActionPlan}
                     disabled={isStudyPlanLoading || isActionPlanLoading || isAILoading}
-                    className="w-full max-[767px]:landscape:flex-1 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1 hover:from-orange-600 hover:to-amber-600 shadow-xl shadow-orange-500/20 active:scale-95 transition-all whitespace-nowrap disabled:opacity-50"
+                    className="py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1 hover:from-orange-600 hover:to-amber-600 shadow-xl shadow-orange-500/20 active:scale-95 transition-all whitespace-nowrap disabled:opacity-50 animate-in fade-in"
                     title={selectedTopic ? `Generate custom Action Plan for: ${selectedTopic.title}` : `Select a topic to generate Action Plan`}
                   >
                     {isActionPlanLoading ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
@@ -3700,8 +3722,8 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
               )}
             </div>
 
-            {/* Search Bar */}
-            <div className="relative flex-1">
+            {/* Search Bar under action buttons */}
+            <div className="relative w-full">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -3719,56 +3741,67 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                 </button>
               )}
             </div>
-          </div>
 
-          {/* Favorite Stars */}
-          <div className="pb-4 border-b border-slate-200/65 dark:border-slate-800/60 w-full">
-            <button
-              onClick={() => setIsArchiveFolderOpen(prev => !prev)}
-              className="w-full flex items-center justify-between p-2 rounded-xl bg-amber-50/50 dark:bg-slate-900/20 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20 border border-amber-100/40 transition-all select-none cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <Star size={15} className="text-amber-500" fill="currentColor" />
-                <span className="text-[11px] font-black uppercase tracking-wider">Favorite Stars</span>
-                <span className="bg-amber-100 dark:bg-amber-900/40 text-amber-700 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
+            {/* Files / Stars tab control in ONE line right under Search */}
+            <div className="flex bg-slate-100 dark:bg-slate-900/60 p-1 rounded-2xl w-full border border-slate-200/40 dark:border-slate-800/40">
+              <button
+                onClick={() => setSidebarFilter('files')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  sidebarFilter === 'files'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-black'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-705 dark:hover:text-slate-300'
+                }`}
+              >
+                <Folder size={12} className={sidebarFilter === 'files' ? 'text-indigo-500' : 'text-slate-400'} />
+                <span>Files</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${sidebarFilter === 'files' ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400' : 'bg-slate-200 dark:bg-slate-800/80 text-slate-600'}`}>
+                  {activeTopics.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setSidebarFilter('stars')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  sidebarFilter === 'stars'
+                    ? 'bg-amber-500 dark:bg-amber-600 text-white shadow-sm font-black'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-705 dark:hover:text-slate-300'
+                }`}
+              >
+                <Star size={12} fill={sidebarFilter === 'stars' ? "currentColor" : "none"} className={sidebarFilter === 'stars' ? 'text-white' : 'text-amber-500'} />
+                <span>Stars</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${sidebarFilter === 'stars' ? 'bg-amber-605 text-white' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'}`}>
                   {archivedTopics.length}
                 </span>
-              </div>
-              {isArchiveFolderOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
-
-            {isArchiveFolderOpen && (
-              <div className="mt-2 space-y-1.5 pl-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                {filteredArchivedTopics.length > 0 ? (
-                  filteredArchivedTopics.map(t => renderTopic(t))
-                ) : (
-                  <div className="text-center py-4 text-[10px] text-slate-400 select-none">
-                    {searchTerm ? 'No matching favorite topics' : 'Favorite Stars is empty'}
-                  </div>
-                )}
-              </div>
-            )}
+              </button>
+            </div>
           </div>
 
-          {/* Active Topics */}
-          <div className="flex items-center gap-2 w-full pt-2">
-            <Folder size={15} className="text-slate-500" />
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">Basic Files</span>
-          </div>
-          <div 
-            className={`space-y-1 min-h-[50px] outline-none rounded-xl transition-all ${dragOverTopicId === null && draggedTopicId ? 'ring-2 ring-indigo-400/50 bg-indigo-50/30' : ''}`}
-            onDragOver={(e) => handleDragOver(e, null)}
-            onDragLeave={(e) => handleDragLeave(e, null)}
-            onDrop={(e) => handleDrop(e, null)}
-          >
-            {filteredTopics.length > 0 ? (
-              filteredTopics.map(t => renderTopic(t))
-            ) : (
-              <div className="text-center py-6 text-xs text-slate-400 select-none">
-                {searchTerm ? 'No matching topics found' : 'No active topics yet'}
-              </div>
-            )}
-          </div>
+          {/* Active Folder view based on filter */}
+          {sidebarFilter === 'files' ? (
+            <div 
+              className={`space-y-1 min-h-[50px] outline-none rounded-xl transition-all ${dragOverTopicId === null && draggedTopicId ? 'ring-2 ring-indigo-400/50 bg-indigo-50/30' : ''}`}
+              onDragOver={(e) => handleDragOver(e, null)}
+              onDragLeave={(e) => handleDragLeave(e, null)}
+              onDrop={(e) => handleDrop(e, null)}
+            >
+              {filteredTopics.length > 0 ? (
+                filteredTopics.map(t => renderTopic(t))
+              ) : (
+                <div className="text-center py-6 text-xs text-slate-400 select-none">
+                  {searchTerm ? 'No matching topics found' : 'No active topics yet'}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1.5 pl-0.5">
+              {filteredArchivedTopics.length > 0 ? (
+                filteredArchivedTopics.map(t => renderTopic(t))
+              ) : (
+                <div className="text-center py-6 text-xs text-slate-400 select-none">
+                  {searchTerm ? 'No matching favorite topics' : 'Stars is empty'}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Resizable drag handle (Touch + Mouse friendly) */}
